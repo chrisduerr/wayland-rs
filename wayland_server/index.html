@@ -1,0 +1,75 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="API documentation for the Rust `wayland_server` crate."><meta name="keywords" content="rust, rustlang, rust-lang, wayland_server"><title>wayland_server - Rust</title><link rel="stylesheet" type="text/css" href="../normalize.css"><link rel="stylesheet" type="text/css" href="../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../dark.css"><link rel="stylesheet" type="text/css" href="../light.css" id="themeStyle"><script src="../storage.js"></script><noscript><link rel="stylesheet" href="../noscript.css"></noscript><link rel="shortcut icon" href="../favicon.ico"><style type="text/css">#crate-search{background-image:url("../down-arrow.svg");}</style></head><body class="rustdoc mod"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../wayland_server/index.html'><img src='../rust-logo.png' alt='logo' width='100'></a><p class='location'>Crate wayland_server</p><div class="sidebar-elems"><a id='all-types' href='all.html'><p>See all wayland_server's items</p></a><div class="block items"><ul><li><a href="#reexports">Re-exports</a></li><li><a href="#modules">Modules</a></li><li><a href="#structs">Structs</a></li><li><a href="#enums">Enums</a></li><li><a href="#traits">Traits</a></li></ul></div><p class='location'></p><script>window.sidebarCurrent = {name: 'wayland_server', ty: 'mod', relpath: '../'};</script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../theme.js"></script><nav class="sub"><form class="search-form js-only"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../settings.html"><img src="../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><h1 class='fqn'><span class='out-of-band'><span id='render-detail'><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class='inner'>&#x2212;</span>]</a></span><a class='srclink' href='../src/wayland_server/lib.rs.html#1-208' title='goto source code'>[src]</a></span><span class='in-band'>Crate <a class="mod" href=''>wayland_server</a></span></h1><div class='docblock'><p>Server-side Wayland connector</p>
+<h2 id="overview" class="section-header"><a href="#overview">Overview</a></h2>
+<p>This crate provides the interfaces and machinery to safely create servers
+for the Wayland protocol. It is a rust wrapper around the <code>libwayland-server.so</code>
+C library.</p>
+<p>The Wayland protocol revolves around the creation of various objects and the exchange
+of messages associated to these objects. Whenever a client connects, a <code>Display</code> object
+is automatically created in their object space, which they use as a root to create new
+objects and bootstrap their state.</p>
+<h2 id="protocol-and-messages-handling-model" class="section-header"><a href="#protocol-and-messages-handling-model">Protocol and messages handling model</a></h2>
+<p>The protocol being bi-directional, you can send and receive messages.
+Sending messages is done via methods of Rust objects corresponding to the wayland protocol
+objects, receiving and handling them is done by providing implementations.</p>
+<h3 id="resources" class="section-header"><a href="#resources">Resources</a></h3>
+<p>The protocol and message model is very similar to the one of <code>wayland-client</code>, with the
+main difference being that the underlying handles to objects are represented by the <code>Resource&lt;I&gt;</code>
+type, very similarly to proxies in <code>wayland-client</code>.</p>
+<p>These resources are used to send messages to the client (in the Wayland context,
+these are called &quot;events&quot;). You usually don't use them directly, and instead call
+methods on the Rust objects themselves, which invoke the appropriate <code>Resource</code> methods.
+It is also possible to directly use the <code>Resource::&lt;I&gt;::send(..)</code> method.</p>
+<p>There is not a 1 to 1 mapping between Rust object instances and protocol
+objects. Rather, you can think of the Rust objects as <code>Rc</code>-like handles to a
+Wayland object. Multiple instances of a Rust object can exist referring to the same
+protocol object.</p>
+<p>Similarly, the lifetimes of the protocol objects and the Rust objects are
+not tightly tied. As protocol objects are created and destroyed by protocol
+messages, it can happen that an object gets destroyed while one or more
+Rust objects still refer to it. In such case, these Rust objects will be disabled
+and the <code>alive()</code> method on the underlying <code>Resource&lt;I&gt;</code> will start to return <code>false</code>.
+Events that are subsequently sent to them are ignored.</p>
+<h3 id="implementations-1" class="section-header"><a href="#implementations-1">Implementations</a></h3>
+<p>To receive and process messages from the clients to you (in Wayland context they are
+called &quot;requests&quot;), you need to provide an <code>Implementation</code> for each Wayland object
+created in the protocol session. Whenever a new protocol object is created, you will
+receive a <code>NewResource&lt;I&gt;</code> object. Providing an implementation via its <code>implement()</code> method
+will turn it into a regular Rust object.</p>
+<p><strong>All objects must be implemented</strong>, even if it is an implementation doing nothing.
+Failure to do so (by dropping the <code>NewResource&lt;I&gt;</code> for example) can cause future fatal
+protocol errors if the client tries to send a request to this object.</p>
+<p>An implementation is a struct implementing the <code>RequestHandler</code> trait for the interface
+of the considered object. Alternatively, an <code>FnMut(I::Request, I)</code> closure can be
+used with the <code>implement_closure()</code> method, where <code>I</code> is the interface
+of the considered object.</p>
+<p>A Rust object passed to your implementation is guaranteed to be alive (as it just received
+a request), unless the exact message received is a destructor (which is indicated in the API
+documentations).</p>
+<h2 id="event-loops-and-general-structure" class="section-header"><a href="#event-loops-and-general-structure">Event loops and general structure</a></h2>
+<p>The core of your server is the <code>Display</code> object. It represent the ability of your program to
+process Wayland messages. Once this object is created, you can configure it to listen on one
+or more sockets for incoming client connections (see the <code>Display</code> docs for details).</p>
+<p>To properly function, this Wayland implementation also needs an event loop structure,
+which is here provided by the <code>calloop</code> crate. It is a public dependency and is reexported
+as <code>wayland_server::calloop</code>.</p>
+</div><h2 id='reexports' class='section-header'><a href="#reexports">Re-exports</a></h2>
+<table><tr><td><code>pub extern crate calloop;</code></td></tr></table><h2 id='modules' class='section-header'><a href="#modules">Modules</a></h2>
+<table><tr class='module-item'><td><a class="mod" href="protocol/index.html" title='wayland_server::protocol mod'>protocol</a></td><td class='docblock-short'><p>Generated interfaces for the core wayland protocol</p>
+</td></tr><tr class='module-item'><td><a class="mod" href="sys/index.html" title='wayland_server::sys mod'>sys</a></td><td class='docblock-short'><p>C-associated types</p>
+</td></tr></table><h2 id='structs' class='section-header'><a href="#structs">Structs</a></h2>
+<table><tr class='module-item'><td><a class="struct" href="struct.AnonymousObject.html" title='wayland_server::AnonymousObject struct'>AnonymousObject</a></td><td class='docblock-short'><p>Anonymous interface</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.Client.html" title='wayland_server::Client struct'>Client</a></td><td class='docblock-short'><p>A handle to a client connected to your server</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.Display.html" title='wayland_server::Display struct'>Display</a></td><td class='docblock-short'><p>The wayland display</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.Global.html" title='wayland_server::Global struct'>Global</a></td><td class='docblock-short'><p>A handle to a global object</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.NewResource.html" title='wayland_server::NewResource struct'>NewResource</a></td><td class='docblock-short'><p>A newly-created resource that needs implementation</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.Resource.html" title='wayland_server::Resource struct'>Resource</a></td><td class='docblock-short'><p>An handle to a wayland resource</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.UserDataMap.html" title='wayland_server::UserDataMap struct'>UserDataMap</a></td><td class='docblock-short'><p>A storage able to store several values of <code>UserData</code>
+of different types. It behaves similarly to a <code>TypeMap</code>.</p>
+</td></tr></table><h2 id='enums' class='section-header'><a href="#enums">Enums</a></h2>
+<table><tr class='module-item'><td><a class="enum" href="enum.NoMessage.html" title='wayland_server::NoMessage enum'>NoMessage</a></td><td class='docblock-short'><p>An empty enum representing a MessageGroup with no messages</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.ResourceMap.html" title='wayland_server::ResourceMap enum'>ResourceMap</a></td><td class='docblock-short'><p>A handle to the object map internal to the library state</p>
+</td></tr></table><h2 id='traits' class='section-header'><a href="#traits">Traits</a></h2>
+<table><tr class='module-item'><td><a class="trait" href="trait.HandledBy.html" title='wayland_server::HandledBy trait'>HandledBy</a></td><td class='docblock-short'><p>Provides a callback function to handle requests of the implementing interface via <code>T</code>.</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.Interface.html" title='wayland_server::Interface trait'>Interface</a></td><td class='docblock-short'><p>The description of a wayland interface</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.MessageGroup.html" title='wayland_server::MessageGroup trait'>MessageGroup</a></td><td class='docblock-short'><p>A group of messages</p>
+</td></tr></table></section><section id="search" class="content hidden"></section><section class="footer"></section><aside id="help" class="hidden"><div><h1 class="hidden">Help</h1><div class="shortcuts"><h2>Keyboard Shortcuts</h2><dl><dt><kbd>?</kbd></dt><dd>Show this help dialog</dd><dt><kbd>S</kbd></dt><dd>Focus the search field</dd><dt><kbd>↑</kbd></dt><dd>Move up in search results</dd><dt><kbd>↓</kbd></dt><dd>Move down in search results</dd><dt><kbd>↹</kbd></dt><dd>Switch tab</dd><dt><kbd>&#9166;</kbd></dt><dd>Go to active search result</dd><dt><kbd>+</kbd></dt><dd>Expand all sections</dd><dt><kbd>-</kbd></dt><dd>Collapse all sections</dd></dl></div><div class="infos"><h2>Search Tricks</h2><p>Prefix searches with a type followed by a colon (e.g., <code>fn:</code>) to restrict the search to a given type.</p><p>Accepted types are: <code>fn</code>, <code>mod</code>, <code>struct</code>, <code>enum</code>, <code>trait</code>, <code>type</code>, <code>macro</code>, and <code>const</code>.</p><p>Search functions by type signature (e.g., <code>vec -> usize</code> or <code>* -> vec</code>)</p><p>Search multiple things at once by splitting your query with comma (e.g., <code>str,u8</code> or <code>String,struct:Vec,test</code>)</p></div></div></aside><script>window.rootPath = "../";window.currentCrate = "wayland_server";</script><script src="../aliases.js"></script><script src="../main.js"></script><script defer src="../search-index.js"></script></body></html>
